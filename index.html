@@ -2464,69 +2464,78 @@ window.saveReportPhoto = function() {
     alert('لا يوجد تقرير لحفظه. يرجى إكمال التقييم أولاً.');
     return;
   }
+
   // Show loading state
   var btn = document.querySelector('.btn-save');
   var origText = btn ? btn.innerHTML : '';
   if (btn) btn.innerHTML = '<span>جاري الحفظ...</span>';
-  
-  // Hide canvas-wrap temporarily (it's empty anyway)
-  var canvasWrap = document.querySelector('.canvas-wrap');
-  if (canvasWrap) canvasWrap.style.display = 'none';
 
-  // Measure the FULL scrollable height of the target
-  var fullW = target.scrollWidth;
-  var fullH = target.scrollHeight;
+  // Clone the report section into an off-screen LTR wrapper
+  // This ensures html2canvas starts from x=0 and captures the full width
+  var clone = target.cloneNode(true);
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'position:fixed',
+    'top:-99999px',
+    'left:0',
+    'width:' + target.scrollWidth + 'px',
+    'background:#f1f5f9',
+    'direction:ltr',   // wrapper is LTR so canvas starts at x=0
+    'overflow:visible',
+    'z-index:-9999'
+  ].join(';');
 
-  html2canvas(target, {
-    scale: 2,
-    useCORS: true,
-    allowTaint: true,
-    backgroundColor: '#f1f5f9',
-    width: fullW,
-    height: fullH,
-    windowWidth: fullW,
-    windowHeight: fullH,
-    scrollX: -window.scrollX,
-    scrollY: -target.getBoundingClientRect().top + window.scrollY,
-    logging: false,
-    onclone: function(doc) {
-      // In the cloned document, remove any overflow/max-height restrictions
-      var el = doc.getElementById('caseReportSection');
-      if (el) {
-        el.style.overflow = 'visible';
-        el.style.maxHeight = 'none';
-        el.style.height = 'auto';
-      }
-      // Also fix any inner scrollable containers
-      var all = doc.querySelectorAll('*');
-      for (var i = 0; i < all.length; i++) {
-        var cs = window.getComputedStyle(all[i]);
-        if (cs.overflow === 'hidden' || cs.overflow === 'scroll' || cs.overflow === 'auto') {
-          all[i].style.overflow = 'visible';
-        }
-        if (cs.maxHeight && cs.maxHeight !== 'none') {
-          all[i].style.maxHeight = 'none';
-        }
-      }
-    }
-  }).then(function(canvas) {
-    // Restore canvas-wrap
-    if (canvasWrap) canvasWrap.style.display = '';
-    if (btn) btn.innerHTML = origText;
-    
-    var link = document.createElement('a');
-    var now = new Date();
-    var dateStr = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2);
-    var timeStr = ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2);
-    var incNum = (document.getElementById('incidentNumber') || {}).value || '';
-    link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  }).catch(function(err) {
-    if (canvasWrap) canvasWrap.style.display = '';
-    if (btn) btn.innerHTML = origText;
-    console.error('html2canvas error:', err);
-    alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
+  // Keep the inner content RTL
+  clone.style.direction = 'rtl';
+  clone.style.overflow = 'visible';
+  clone.style.maxHeight = 'none';
+  clone.style.height = 'auto';
+
+  // Remove any overflow restrictions on all children
+  var allEls = clone.querySelectorAll('*');
+  for (var i = 0; i < allEls.length; i++) {
+    allEls[i].style.overflow = 'visible';
+    allEls[i].style.maxHeight = 'none';
+  }
+
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
+
+  // Wait one frame for layout
+  requestAnimationFrame(function() {
+    var captureW = wrapper.scrollWidth;
+    var captureH = wrapper.scrollHeight;
+
+    html2canvas(wrapper, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#f1f5f9',
+      width: captureW,
+      height: captureH,
+      windowWidth: captureW,
+      windowHeight: captureH,
+      scrollX: 0,
+      scrollY: 0,
+      logging: false
+    }).then(function(canvas) {
+      document.body.removeChild(wrapper);
+      if (btn) btn.innerHTML = origText;
+
+      var link = document.createElement('a');
+      var now = new Date();
+      var dateStr = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2);
+      var timeStr = ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2);
+      var incNum = (document.getElementById('incidentNumber') || {}).value || '';
+      link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }).catch(function(err) {
+      document.body.removeChild(wrapper);
+      if (btn) btn.innerHTML = origText;
+      console.error('html2canvas error:', err);
+      alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
+    });
   });
 };
 </script>
