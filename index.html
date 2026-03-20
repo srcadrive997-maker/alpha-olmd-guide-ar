@@ -2457,107 +2457,7 @@ window.toggleL2=function(el){el.classList.toggle('rf-active');var dot=el.querySe
   });
 })();
 
-// Override saveReportPhoto to use html2canvas for proper Arabic RTL rendering
-window.saveReportPhoto = async function () {
-  const target = document.getElementById('caseReportSection');
-  if (!target || target.style.display === 'none') {
-    alert('لا يوجد تقرير لحفظه. يرجى إكمال التقييم أولاً.');
-    return;
-  }
 
-  const btn = document.querySelector('.btn-save');
-  const origText = btn ? btn.innerHTML : '';
-  if (btn) btn.innerHTML = '<span>جاري الحفظ...</span>';
-
-  try {
-    // Use fixed desktop width so the full report is captured regardless of screen size
-    const RENDER_WIDTH = 900;
-
-    const clone = target.cloneNode(true);
-    // Remove buttons and canvas elements from the captured image
-    clone.querySelectorAll('.btn-row, .canvas-wrap').forEach(function(el) { el.remove(); });
-
-    // Off-screen container — RTL, fixed width, no overflow clipping
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = [
-      'position:fixed',
-      'left:-200000px',
-      'top:0',
-      'width:' + RENDER_WIDTH + 'px',
-      'min-width:' + RENDER_WIDTH + 'px',
-      'max-width:' + RENDER_WIDTH + 'px',
-      'background:#f1f5f9',
-      'direction:rtl',
-      'overflow:visible',
-      'z-index:-9999',
-      'padding:0',
-      'margin:0',
-      'box-sizing:border-box'
-    ].join(';');
-
-    // Force clone to fill the wrapper at the same fixed width
-    clone.style.cssText = [
-      'display:block',
-      'width:' + RENDER_WIDTH + 'px',
-      'min-width:' + RENDER_WIDTH + 'px',
-      'max-width:' + RENDER_WIDTH + 'px',
-      'height:auto',
-      'max-height:none',
-      'overflow:visible',
-      'direction:rtl',
-      'margin:0',
-      'padding:0',
-      'transform:none',
-      'box-sizing:border-box'
-    ].join(';');
-
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-
-    // Wait for fonts and two animation frames for full layout
-    if (document.fonts && document.fonts.ready) {
-      await document.fonts.ready;
-    }
-    await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
-
-    const captureHeight = clone.scrollHeight || clone.offsetHeight;
-
-    const canvas = await html2canvas(clone, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#f1f5f9',
-      width: RENDER_WIDTH,
-      height: captureHeight,
-      windowWidth: RENDER_WIDTH,
-      windowHeight: captureHeight,
-      scrollX: 0,
-      scrollY: 0,
-      x: 0,
-      y: 0,
-      logging: false
-    });
-
-    document.body.removeChild(wrapper);
-    if (btn) btn.innerHTML = origText;
-
-    const link = document.createElement('a');
-    const now = new Date();
-    const dateStr = now.getFullYear() +
-      ('0' + (now.getMonth() + 1)).slice(-2) +
-      ('0' + now.getDate()).slice(-2);
-    const timeStr = ('0' + now.getHours()).slice(-2) + ('0' + now.getMinutes()).slice(-2);
-    const incNum = (document.getElementById('incidentNumber') || {}).value || '';
-    link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-
-  } catch (err) {
-    console.error('html2canvas error:', err);
-    alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
-    if (btn) btn.innerHTML = origText;
-  }
-}
 </script>
 
 
@@ -2869,5 +2769,130 @@ function exportCaseLogExcel() {
 })();
 </script>
 
+
+<script>
+// Override saveReportPhoto - canvas-based Arabic text rendering to fix html2canvas RTL bug
+window.saveReportPhoto = function() {
+  var target = document.getElementById('caseReportSection');
+  if (!target || target.style.display === 'none') {
+    alert('\u0644\u0627 \u064a\u0648\u062c\u062f \u062a\u0642\u0631\u064a\u0631 \u0644\u062d\u0641\u0638\u0647');
+    return;
+  }
+
+  var btn = document.querySelector('.btn-save');
+  var origText = btn ? btn.innerHTML : '';
+  if (btn) btn.innerHTML = '<span>\u062c\u0627\u0631\u064a \u0627\u0644\u062d\u0641\u0638...</span>';
+
+  /* Clone the report content (without buttons) */
+  var clone = target.cloneNode(true);
+  clone.querySelectorAll('.btn-row, .canvas-wrap').forEach(function(el) { el.remove(); });
+  clone.style.display = 'block';
+  clone.style.width = '100%';
+  clone.style.maxWidth = 'none';
+  clone.style.overflow = 'visible';
+  clone.removeAttribute('id');
+
+  /* Helper: render Arabic text as a Canvas image to bypass html2canvas RTL bug */
+  function textToImg(text, bgColor, textColor, fontSize, containerWidth, containerHeight) {
+    var c = document.createElement('canvas');
+    c.width = containerWidth * 2;
+    c.height = containerHeight * 2;
+    var ctx = c.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, containerWidth, containerHeight);
+    ctx.fillStyle = textColor;
+    ctx.font = fontSize + 'px Cairo, -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.direction = 'rtl';
+    ctx.fillText(text, containerWidth / 2, containerHeight * 0.65);
+    var img = document.createElement('img');
+    img.src = c.toDataURL('image/png');
+    img.style.width = '100%';
+    img.style.display = 'block';
+    return img;
+  }
+
+  /* Replace header text with canvas image */
+  var hdrs = clone.querySelectorAll('.sum-hdr');
+  hdrs.forEach(function(hdr) {
+    var text = hdr.textContent.trim();
+    if (text && /[\u0600-\u06FF]/.test(text)) {
+      var img = textToImg(text, '#1e293b', '#ffffff', 16, 1160, 48);
+      hdr.innerHTML = '';
+      hdr.style.padding = '0';
+      hdr.appendChild(img);
+    }
+  });
+
+  /* Replace legal banner text with canvas image */
+  var legal = clone.querySelector('.legal-banner');
+  if (legal) {
+    var legalText = legal.textContent.trim();
+    if (legalText) {
+      var legalImg = textToImg(legalText, '#fef3c7', '#92400e', 11, 1160, 36);
+      legal.innerHTML = '';
+      legal.style.padding = '0';
+      legal.appendChild(legalImg);
+    }
+  }
+
+  /* Create off-screen wrapper with RTL direction */
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:fixed;left:0;top:0;width:1200px;height:auto;direction:rtl;background:#f1f5f9;z-index:-9999;overflow:visible;padding:16px;margin:0;';
+  wrapper.appendChild(clone);
+
+  var savedScrollY = window.scrollY;
+  document.body.appendChild(wrapper);
+  window.scrollTo(0, 0);
+
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      var captureW = wrapper.scrollWidth;
+      var captureH = wrapper.scrollHeight;
+
+      html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#f1f5f9',
+        width: captureW,
+        height: captureH,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: captureW,
+        windowHeight: captureH,
+        x: 0,
+        y: 0
+      }).then(function(canvas) {
+        document.body.removeChild(wrapper);
+        window.scrollTo(0, savedScrollY);
+        if (btn) btn.innerHTML = origText;
+
+        canvas.toBlob(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          var now = new Date();
+          var dateStr = now.getFullYear() + ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
+          var timeStr = ('0' + now.getHours()).slice(-2) + ('0' + now.getMinutes()).slice(-2);
+          var incNum = (document.getElementById('incidentNumber') || {}).value || '';
+          link.download = 'ALPHA_OLMD_Report_' + dateStr + '_' + timeStr + '.png';
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+        }, 'image/png');
+      }).catch(function(err) {
+        console.error('html2canvas error:', err);
+        document.body.removeChild(wrapper);
+        window.scrollTo(0, savedScrollY);
+        if (btn) btn.innerHTML = origText;
+        alert('\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u062d\u0641\u0638 \u0627\u0644\u0635\u0648\u0631\u0629');
+      });
+    });
+  });
+}
+</script>
 </body>
 </html>
