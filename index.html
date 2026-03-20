@@ -1242,7 +1242,7 @@ body {
 /* ============================================================
    PRINT
    ============================================================ */
-
+@media print {
   body { background: #fff; }
 }
 
@@ -2458,86 +2458,94 @@ window.toggleL2=function(el){el.classList.toggle('rf-active');var dot=el.querySe
 })();
 
 // Override saveReportPhoto to use html2canvas for proper Arabic RTL rendering
-window.saveReportPhoto = function() {
-  var target = document.getElementById('caseReportSection');
+window.saveReportPhoto = async function () {
+  const target = document.getElementById('caseReportSection');
   if (!target || target.style.display === 'none') {
     alert('لا يوجد تقرير لحفظه. يرجى إكمال التقييم أولاً.');
     return;
   }
 
-  // Show loading state
-  var btn = document.querySelector('.btn-save');
-  var origText = btn ? btn.innerHTML : '';
+  const btn = document.querySelector('.btn-save');
+  const origText = btn ? btn.innerHTML : '';
   if (btn) btn.innerHTML = '<span>جاري الحفظ...</span>';
 
-  // Clone the report section into an off-screen LTR wrapper
-  // This ensures html2canvas starts from x=0 and captures the full width
-  var clone = target.cloneNode(true);
-  var wrapper = document.createElement('div');
-  wrapper.style.cssText = [
-    'position:fixed',
-    'top:-99999px',
-    'left:0',
-    'width:' + target.scrollWidth + 'px',
-    'background:#f1f5f9',
-    'direction:ltr',   // wrapper is LTR so canvas starts at x=0
-    'overflow:visible',
-    'z-index:-9999'
-  ].join(';');
+  try {
+    const rect = target.getBoundingClientRect();
+    const captureWidth = Math.ceil(rect.width);
 
-  // Keep the inner content RTL
-  clone.style.direction = 'rtl';
-  clone.style.overflow = 'visible';
-  clone.style.maxHeight = 'none';
-  clone.style.height = 'auto';
+    const clone = target.cloneNode(true);
+    clone.querySelectorAll('.btn-row, .canvas-wrap').forEach(el => el.remove());
 
-  // Remove any overflow restrictions on all children
-  var allEls = clone.querySelectorAll('*');
-  for (var i = 0; i < allEls.length; i++) {
-    allEls[i].style.overflow = 'visible';
-    allEls[i].style.maxHeight = 'none';
-  }
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-100000px';
+    wrapper.style.top = '0';
+    wrapper.style.width = captureWidth + 'px';
+    wrapper.style.background = '#f1f5f9';
+    wrapper.style.direction = 'rtl';
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.zIndex = '-1';
+    wrapper.style.padding = '0';
+    wrapper.style.margin = '0';
 
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
+    clone.style.display = 'block';
+    clone.style.width = captureWidth + 'px';
+    clone.style.maxWidth = captureWidth + 'px';
+    clone.style.minWidth = captureWidth + 'px';
+    clone.style.margin = '0';
+    clone.style.direction = 'rtl';
+    clone.style.overflow = 'visible';
+    clone.style.height = 'auto';
+    clone.style.maxHeight = 'none';
+    clone.style.transform = 'none';
 
-  // Wait one frame for layout
-  requestAnimationFrame(function() {
-    var captureW = wrapper.scrollWidth;
-    var captureH = wrapper.scrollHeight;
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
 
-    html2canvas(wrapper, {
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const canvas = await html2canvas(clone, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#f1f5f9',
-      width: captureW,
-      height: captureH,
-      windowWidth: captureW,
-      windowHeight: captureH,
+      width: captureWidth,
+      height: Math.ceil(clone.scrollHeight),
+      windowWidth: captureWidth,
+      windowHeight: Math.ceil(clone.scrollHeight),
       scrollX: 0,
       scrollY: 0,
+      x: 0,
+      y: 0,
       logging: false
-    }).then(function(canvas) {
-      document.body.removeChild(wrapper);
-      if (btn) btn.innerHTML = origText;
-
-      var link = document.createElement('a');
-      var now = new Date();
-      var dateStr = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2);
-      var timeStr = ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2);
-      var incNum = (document.getElementById('incidentNumber') || {}).value || '';
-      link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    }).catch(function(err) {
-      document.body.removeChild(wrapper);
-      if (btn) btn.innerHTML = origText;
-      console.error('html2canvas error:', err);
-      alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
     });
-  });
-};
+
+    document.body.removeChild(wrapper);
+    if (btn) btn.innerHTML = origText;
+
+    const link = document.createElement('a');
+    const now = new Date();
+    const dateStr =
+      now.getFullYear() +
+      ('0' + (now.getMonth() + 1)).slice(-2) +
+      ('0' + now.getDate()).slice(-2);
+    const timeStr =
+      ('0' + now.getHours()).slice(-2) +
+      ('0' + now.getMinutes()).slice(-2);
+    const incNum = (document.getElementById('incidentNumber') || {}).value || '';
+
+    link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    console.error('html2canvas error:', err);
+    alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
+    if (btn) btn.innerHTML = origText;
+  }
+}
 </script>
 
 
