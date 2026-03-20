@@ -2472,17 +2472,43 @@ window.saveReportPhoto = function() {
   // Hide canvas-wrap temporarily (it's empty anyway)
   var canvasWrap = document.querySelector('.canvas-wrap');
   if (canvasWrap) canvasWrap.style.display = 'none';
-  
+
+  // Measure the FULL scrollable height of the target
+  var fullW = target.scrollWidth;
+  var fullH = target.scrollHeight;
+
   html2canvas(target, {
     scale: 2,
     useCORS: true,
     allowTaint: true,
     backgroundColor: '#f1f5f9',
-    width: target.scrollWidth,
-    height: target.scrollHeight,
-    scrollX: 0,
-    scrollY: 0,
-    logging: false
+    width: fullW,
+    height: fullH,
+    windowWidth: fullW,
+    windowHeight: fullH,
+    scrollX: -window.scrollX,
+    scrollY: -target.getBoundingClientRect().top + window.scrollY,
+    logging: false,
+    onclone: function(doc) {
+      // In the cloned document, remove any overflow/max-height restrictions
+      var el = doc.getElementById('caseReportSection');
+      if (el) {
+        el.style.overflow = 'visible';
+        el.style.maxHeight = 'none';
+        el.style.height = 'auto';
+      }
+      // Also fix any inner scrollable containers
+      var all = doc.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var cs = window.getComputedStyle(all[i]);
+        if (cs.overflow === 'hidden' || cs.overflow === 'scroll' || cs.overflow === 'auto') {
+          all[i].style.overflow = 'visible';
+        }
+        if (cs.maxHeight && cs.maxHeight !== 'none') {
+          all[i].style.maxHeight = 'none';
+        }
+      }
+    }
   }).then(function(canvas) {
     // Restore canvas-wrap
     if (canvasWrap) canvasWrap.style.display = '';
@@ -2492,7 +2518,8 @@ window.saveReportPhoto = function() {
     var now = new Date();
     var dateStr = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2);
     var timeStr = ('0'+now.getHours()).slice(-2) + ('0'+now.getMinutes()).slice(-2);
-    link.download = 'OLMD_Report_' + dateStr + '_' + timeStr + '.png';
+    var incNum = (document.getElementById('incidentNumber') || {}).value || '';
+    link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
   }).catch(function(err) {
@@ -2615,6 +2642,12 @@ function _renderCaseLog() {
 }
 
 function _saveCaseToLog(caseData) {
+  // Always re-read from localStorage first to get latest data from all doctors/sessions
+  try {
+    var latest = JSON.parse(localStorage.getItem('olmd_case_log_ar') || '[]');
+    // Merge: keep latest from storage, add new entry
+    _caseLog = latest;
+  } catch(e) {}
   _caseLog.push(caseData);
   try { localStorage.setItem('olmd_case_log_ar', JSON.stringify(_caseLog)); } catch(e) {}
   _renderCaseLog();
