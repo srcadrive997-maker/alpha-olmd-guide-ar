@@ -2470,52 +2470,67 @@ window.saveReportPhoto = async function () {
   if (btn) btn.innerHTML = '<span>جاري الحفظ...</span>';
 
   try {
-    const rect = target.getBoundingClientRect();
-    const captureWidth = Math.ceil(rect.width);
+    // Use fixed desktop width so the full report is captured regardless of screen size
+    const RENDER_WIDTH = 900;
 
     const clone = target.cloneNode(true);
-    clone.querySelectorAll('.btn-row, .canvas-wrap').forEach(el => el.remove());
+    // Remove buttons and canvas elements from the captured image
+    clone.querySelectorAll('.btn-row, .canvas-wrap').forEach(function(el) { el.remove(); });
 
+    // Off-screen container — RTL, fixed width, no overflow clipping
     const wrapper = document.createElement('div');
-    wrapper.style.position = 'fixed';
-    wrapper.style.left = '-100000px';
-    wrapper.style.top = '0';
-    wrapper.style.width = captureWidth + 'px';
-    wrapper.style.background = '#f1f5f9';
-    wrapper.style.direction = 'rtl';
-    wrapper.style.overflow = 'hidden';
-    wrapper.style.zIndex = '-1';
-    wrapper.style.padding = '0';
-    wrapper.style.margin = '0';
+    wrapper.style.cssText = [
+      'position:fixed',
+      'left:-200000px',
+      'top:0',
+      'width:' + RENDER_WIDTH + 'px',
+      'min-width:' + RENDER_WIDTH + 'px',
+      'max-width:' + RENDER_WIDTH + 'px',
+      'background:#f1f5f9',
+      'direction:rtl',
+      'overflow:visible',
+      'z-index:-9999',
+      'padding:0',
+      'margin:0',
+      'box-sizing:border-box'
+    ].join(';');
 
-    clone.style.display = 'block';
-    clone.style.width = captureWidth + 'px';
-    clone.style.maxWidth = captureWidth + 'px';
-    clone.style.minWidth = captureWidth + 'px';
-    clone.style.margin = '0';
-    clone.style.direction = 'rtl';
-    clone.style.overflow = 'visible';
-    clone.style.height = 'auto';
-    clone.style.maxHeight = 'none';
-    clone.style.transform = 'none';
+    // Force clone to fill the wrapper at the same fixed width
+    clone.style.cssText = [
+      'display:block',
+      'width:' + RENDER_WIDTH + 'px',
+      'min-width:' + RENDER_WIDTH + 'px',
+      'max-width:' + RENDER_WIDTH + 'px',
+      'height:auto',
+      'max-height:none',
+      'overflow:visible',
+      'direction:rtl',
+      'margin:0',
+      'padding:0',
+      'transform:none',
+      'box-sizing:border-box'
+    ].join(';');
 
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
 
+    // Wait for fonts and two animation frames for full layout
     if (document.fonts && document.fonts.ready) {
       await document.fonts.ready;
     }
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
+
+    const captureHeight = clone.scrollHeight || clone.offsetHeight;
 
     const canvas = await html2canvas(clone, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#f1f5f9',
-      width: captureWidth,
-      height: Math.ceil(clone.scrollHeight),
-      windowWidth: captureWidth,
-      windowHeight: Math.ceil(clone.scrollHeight),
+      width: RENDER_WIDTH,
+      height: captureHeight,
+      windowWidth: RENDER_WIDTH,
+      windowHeight: captureHeight,
       scrollX: 0,
       scrollY: 0,
       x: 0,
@@ -2528,18 +2543,15 @@ window.saveReportPhoto = async function () {
 
     const link = document.createElement('a');
     const now = new Date();
-    const dateStr =
-      now.getFullYear() +
+    const dateStr = now.getFullYear() +
       ('0' + (now.getMonth() + 1)).slice(-2) +
       ('0' + now.getDate()).slice(-2);
-    const timeStr =
-      ('0' + now.getHours()).slice(-2) +
-      ('0' + now.getMinutes()).slice(-2);
+    const timeStr = ('0' + now.getHours()).slice(-2) + ('0' + now.getMinutes()).slice(-2);
     const incNum = (document.getElementById('incidentNumber') || {}).value || '';
-
     link.download = 'OLMD_' + (incNum || dateStr) + '_' + timeStr + '.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
+
   } catch (err) {
     console.error('html2canvas error:', err);
     alert('حدث خطأ أثناء حفظ الصورة. يرجى المحاولة مرة أخرى.');
