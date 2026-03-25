@@ -2541,7 +2541,7 @@ var a0_0x415d4f=a0_0x1e41;(function(_0x5ce069,_0x4e0369){var _0x1c845f=a0_0x1e41
 // ============================================================
 // CASE LOG REGISTRY — Auto-save & Excel Export
 // ============================================================
-var _caseLog = JSON.parse(localStorage.getItem('olmd_case_log_ar') || '[]');
+var _caseLog = JSON.parse(localStorage.getItem('_caseLog') || '[]');
 
 function _renderCaseLog() {
   var tbody = document.getElementById('caseLogBody');
@@ -2581,7 +2581,7 @@ function _saveCaseToLog(caseData) {
     var log = JSON.parse(localStorage.getItem('_caseLog') || '[]');
     log.push(caseData);
     localStorage.setItem('_caseLog', JSON.stringify(log));
-    _renderCaseLog(); _refreshLogFromSheets();
+    _renderCaseLog();
 
     // 2. Save to Google Sheets (Cumulative across all devices)
     fetch("https://script.google.com/macros/s/AKfycbzqK3OXGTjvslH_waMuknir7NGphMOQ-aesB68B_I2CXDm14NTVwxIP1Q8pPPUKKU-9Sg/exec", {
@@ -2615,27 +2615,18 @@ function _refreshLogFromSheets() {
             disposition: row["الوجهة البديلة"],
             doctor: row["الطبيب"]
           }));
-          localStorage.setItem('_caseLog', JSON.stringify(mappedData));
-          _renderCaseLog(); _refreshLogFromSheets();
+          _caseLog = mappedData;
+          localStorage.setItem('_caseLog', JSON.stringify(_caseLog));
+          _renderCaseLog();
         }
       }).catch(err => console.error("Sheets load error:", err));
-}
-  // Always re-read from localStorage first to get latest data from all doctors/sessions
-  try {
-    var latest = JSON.parse(localStorage.getItem('olmd_case_log_ar') || '[]');
-    // Merge: keep latest from storage, add new entry
-    _caseLog = latest;
-  } catch(e) {}
-  _caseLog.push(caseData);
-  try { localStorage.setItem('olmd_case_log_ar', JSON.stringify(_caseLog)); } catch(e) {}
-  _renderCaseLog(); _refreshLogFromSheets();
 }
 
 function clearCaseLog() {
   if (!confirm('هل أنت متأكد من مسح جميع الحالات المسجلة؟')) return;
   _caseLog = [];
-  try { localStorage.removeItem('olmd_case_log_ar'); } catch(e) {}
-  _renderCaseLog(); _refreshLogFromSheets();
+  try { localStorage.removeItem('_caseLog'); } catch(e) {}
+  _renderCaseLog();
 }
 
 function exportCaseLogExcel() {
@@ -2660,12 +2651,13 @@ function exportCaseLogExcel() {
       c.newsScore !== undefined ? c.newsScore : '',
       c.disposition || '',
       c.doctor || '',
-      c.disposition || c.disposition || 'عدم نقل'
+      c.disposition || 'عدم نقل'
     ]);
   }
   // Build CSV with BOM for Excel Arabic support
-  var bom = '\uFEFF';
-  var csv = bom + rows.map(function(r){ return r.map(function(cell){ return '"' + String(cell).replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+  var bom = '﻿';
+  var csv = bom + rows.map(function(r){ return r.map(function(cell){ return '"' + String(cell).replace(/"/g,'""') + '"'; }).join(','); }).join('
+');
   var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
