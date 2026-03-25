@@ -1678,6 +1678,12 @@ window.toggleL2=function(el){el.classList.toggle('rf-active');var dot=el.querySe
 
 <div class="card c-navy">
   <div class="ct">تسجيل الحادثة والمريض</div>
+
+<div class="card c-navy">
+  <div class="ct">توقيع الطبيب — تعريف الطبيب الآمر</div>
+  <div class="cs">مطلوب للسجل الطبي القانوني — توجيه NAEMSP ET3 2024.</div>
+
+
   <div class="reg-row1">
     <div class="inp-grp">
       <div class="inp-lbl">رقم الحادثة <span class="req">*</span></div>
@@ -2373,9 +2379,7 @@ window.toggleL2=function(el){el.classList.toggle('rf-active');var dot=el.querySe
   </ul>
 </div>
 
-<div class="card c-navy">
-  <div class="ct">توقيع الطبيب — تعريف الطبيب الآمر</div>
-  <div class="cs">مطلوب للسجل الطبي القانوني — توجيه NAEMSP ET3 2024.</div>
+
   <div class="inp-grp">
     <div class="inp-lbl">اسم الطبيب المناوب</div>
     <select class="sel" id="mdName" style="direction:rtl;text-align:right;font-size:14px;font-weight:600">
@@ -2571,6 +2575,49 @@ function _renderCaseLog() {
 }
 
 function _saveCaseToLog(caseData) {
+    // 1. Save locally as fallback
+    var log = JSON.parse(localStorage.getItem('_caseLog') || '[]');
+    log.push(caseData);
+    localStorage.setItem('_caseLog', JSON.stringify(log));
+    _renderCaseLog(); _refreshLogFromSheets();
+
+    // 2. Save to Google Sheets (Cumulative across all devices)
+    fetch("https://script.google.com/macros/s/AKfycbzqK3OXGTjvslH_waMuknir7NGphMOQ-aesB68B_I2CXDm14NTVwxIP1Q8pPPUKKU-9Sg/exec", {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(caseData)
+    }).then(() => {
+      console.log("Case saved to Google Sheets");
+      // Refresh log from sheets after a short delay
+      setTimeout(_refreshLogFromSheets, 2000);
+    }).catch(err => console.error("Sheets save error:", err));
+}
+
+function _refreshLogFromSheets() {
+    fetch("https://script.google.com/macros/s/AKfycbzqK3OXGTjvslH_waMuknir7NGphMOQ-aesB68B_I2CXDm14NTVwxIP1Q8pPPUKKU-9Sg/exec")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          // Map Google Sheets headers to our caseData format
+          var mappedData = data.map(row => ({
+            incident: row["رقم الحادثة"],
+            date: row["التاريخ"],
+            time: row["الوقت"],
+            region: row["المنطقة"],
+            age: row["العمر"],
+            sex: row["الجنس"],
+            complaint: row["الشكوى"],
+            dispatch: row["أولوية الإرسال"],
+            newsScore: row["درجة العلامات الحيوية"],
+            disposition: row["الوجهة البديلة"],
+            doctor: row["الطبيب"]
+          }));
+          localStorage.setItem('_caseLog', JSON.stringify(mappedData));
+          _renderCaseLog(); _refreshLogFromSheets();
+        }
+      }).catch(err => console.error("Sheets load error:", err));
+}
   // Always re-read from localStorage first to get latest data from all doctors/sessions
   try {
     var latest = JSON.parse(localStorage.getItem('olmd_case_log_ar') || '[]');
@@ -2579,14 +2626,14 @@ function _saveCaseToLog(caseData) {
   } catch(e) {}
   _caseLog.push(caseData);
   try { localStorage.setItem('olmd_case_log_ar', JSON.stringify(_caseLog)); } catch(e) {}
-  _renderCaseLog();
+  _renderCaseLog(); _refreshLogFromSheets();
 }
 
 function clearCaseLog() {
   if (!confirm('هل أنت متأكد من مسح جميع الحالات المسجلة؟')) return;
   _caseLog = [];
   try { localStorage.removeItem('olmd_case_log_ar'); } catch(e) {}
-  _renderCaseLog();
+  _renderCaseLog(); _refreshLogFromSheets();
 }
 
 function exportCaseLogExcel() {
@@ -2611,7 +2658,7 @@ function exportCaseLogExcel() {
       c.newsScore !== undefined ? c.newsScore : '',
       c.disposition || '',
       c.doctor || '',
-      'عدم نقل'
+      c.disposition || c.disposition || 'عدم نقل'
     ]);
   }
   // Build CSV with BOM for Excel Arabic support
@@ -2664,12 +2711,8 @@ function exportCaseLogExcel() {
       // Doctor name
       var doctorEl = document.getElementById('mdName');
       var doctor = '';
-      if (doctorEl) {
-        if (doctorEl.tagName === 'SELECT') {
-          doctor = doctorEl.options[doctorEl.selectedIndex] ? doctorEl.options[doctorEl.selectedIndex].text : '';
-        } else {
-          doctor = doctorEl.value;
-        }
+      if (doctorEl && doctorEl.value) {
+        doctor = doctorEl.options[doctorEl.selectedIndex].text;
       }
       
       // NEWS score from any score display element
@@ -2682,7 +2725,8 @@ function exportCaseLogExcel() {
       // Disposition
       var dispEl = document.querySelector('.disp.selected .disp-name') || 
                    document.querySelector('.disp.active .disp-name') ||
-                   document.querySelector('.disp-selected .disp-name');
+                   document.querySelector('.disp.opt-active .disp-name') ||
+                   document.querySelector('.disp.rf-active .disp-name');
       var disposition = dispEl ? dispEl.textContent.trim() : '';
       
       // Complaint - look for selected opt (obfuscated script uses opt-active)
@@ -2724,7 +2768,7 @@ function exportCaseLogExcel() {
   
   // Start watching — use both DOMContentLoaded and window.load to ensure it runs
   function _startWatching() {
-    _renderCaseLog();
+    _renderCaseLog(); _refreshLogFromSheets();
     
     var reportSection = document.getElementById('caseReportSection');
     if (!reportSection) return;
